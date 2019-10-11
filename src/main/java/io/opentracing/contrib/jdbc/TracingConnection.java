@@ -44,11 +44,6 @@ public class TracingConnection implements Connection {
   private final Tracer tracer;
 
   public TracingConnection(Connection connection, ConnectionInfo connectionInfo,
-      boolean withActiveSpanOnly, Set<String> ignoredStatements) {
-    this(connection, connectionInfo, withActiveSpanOnly, ignoredStatements, null);
-  }
-
-  public TracingConnection(Connection connection, ConnectionInfo connectionInfo,
       boolean withActiveSpanOnly, Set<String> ignoredStatements, Tracer tracer) {
     this.connection = connection;
     this.connectionInfo = connectionInfo;
@@ -72,7 +67,7 @@ public class TracingConnection implements Connection {
   @Override
   public CallableStatement prepareCall(String sql) throws SQLException {
     return new TracingCallableStatement(connection.prepareCall(sql), sql, connectionInfo,
-        withActiveSpanOnly, ignoredStatements);
+        withActiveSpanOnly, ignoredStatements, tracer);
   }
 
   @Override
@@ -159,7 +154,7 @@ public class TracingConnection implements Connection {
   public Statement createStatement(int resultSetType, int resultSetConcurrency)
       throws SQLException {
     return new TracingStatement(connection.createStatement(resultSetType, resultSetConcurrency),
-        connectionInfo, withActiveSpanOnly, ignoredStatements);
+        connectionInfo, withActiveSpanOnly, ignoredStatements, tracer);
   }
 
   @Override
@@ -175,7 +170,7 @@ public class TracingConnection implements Connection {
       throws SQLException {
     return new TracingCallableStatement(
         connection.prepareCall(sql, resultSetType, resultSetConcurrency), sql, connectionInfo,
-        withActiveSpanOnly, ignoredStatements);
+        withActiveSpanOnly, ignoredStatements, tracer);
   }
 
   @Override
@@ -223,7 +218,7 @@ public class TracingConnection implements Connection {
       int resultSetHoldability) throws SQLException {
     return new TracingStatement(
         connection.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability),
-        connectionInfo, withActiveSpanOnly, ignoredStatements);
+        connectionInfo, withActiveSpanOnly, ignoredStatements, tracer);
   }
 
   @Override

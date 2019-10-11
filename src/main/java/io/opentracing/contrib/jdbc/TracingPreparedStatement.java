@@ -14,9 +14,10 @@
 package io.opentracing.contrib.jdbc;
 
 
-import static io.opentracing.contrib.jdbc.JdbcTracingUtils.buildScope;
+import static io.opentracing.contrib.jdbc.JdbcTracingUtils.buildSpan;
 
 import io.opentracing.Scope;
+import io.opentracing.Span;
 import io.opentracing.Tracer;
 import java.io.InputStream;
 import java.io.Reader;
@@ -44,54 +45,40 @@ public class TracingPreparedStatement extends TracingStatement implements Prepar
 
   private final PreparedStatement preparedStatement;
   private final String query;
-  private final ConnectionInfo connectionInfo;
-  private final boolean withActiveSpanOnly;
-  private final Set<String> ignoredQueries;
-  private final Tracer tracer;
-
-  public TracingPreparedStatement(PreparedStatement preparedStatement, String query,
-      ConnectionInfo connectionInfo,
-      boolean withActiveSpanOnly, Set<String> ignoredStatements) {
-    this(preparedStatement, query, connectionInfo, withActiveSpanOnly, ignoredStatements, null);
-  }
 
   public TracingPreparedStatement(PreparedStatement preparedStatement, String query,
       ConnectionInfo connectionInfo, boolean withActiveSpanOnly, Set<String> ignoredStatements,
       Tracer tracer) {
-    super(preparedStatement, query, connectionInfo, withActiveSpanOnly, ignoredStatements);
+    super(preparedStatement, query, connectionInfo, withActiveSpanOnly, ignoredStatements, tracer);
     this.preparedStatement = preparedStatement;
     this.query = query;
-    this.connectionInfo = connectionInfo;
-    this.withActiveSpanOnly = withActiveSpanOnly;
-    this.ignoredQueries = ignoredStatements;
-    this.tracer = tracer;
   }
 
   @Override
   public ResultSet executeQuery() throws SQLException {
-    Scope scope = buildScope("Query", query, connectionInfo, withActiveSpanOnly, ignoredQueries,
+    Span span = buildSpan("Query", query, connectionInfo, withActiveSpanOnly, ignoredStatements,
         tracer);
-    try {
+    try (Scope ignored = tracer.activateSpan(span)) {
       return preparedStatement.executeQuery();
     } catch (Exception e) {
-      JdbcTracingUtils.onError(e, scope.span());
+      JdbcTracingUtils.onError(e, span);
       throw e;
     } finally {
-      scope.close();
+      span.finish();
     }
   }
 
   @Override
   public int executeUpdate() throws SQLException {
-    Scope scope = buildScope("Update", query, connectionInfo, withActiveSpanOnly, ignoredQueries,
+    Span span = buildSpan("Update", query, connectionInfo, withActiveSpanOnly, ignoredStatements,
         tracer);
-    try {
+    try (Scope ignored = tracer.activateSpan(span)) {
       return preparedStatement.executeUpdate();
     } catch (Exception e) {
-      JdbcTracingUtils.onError(e, scope.span());
+      JdbcTracingUtils.onError(e, span);
       throw e;
     } finally {
-      scope.close();
+      span.finish();
     }
   }
 
@@ -198,15 +185,15 @@ public class TracingPreparedStatement extends TracingStatement implements Prepar
 
   @Override
   public boolean execute() throws SQLException {
-    Scope scope = buildScope("Execute", query, connectionInfo, withActiveSpanOnly,
-        ignoredQueries, tracer);
-    try {
+    Span span = buildSpan("Execute", query, connectionInfo, withActiveSpanOnly,
+        ignoredStatements, tracer);
+    try (Scope ignored = tracer.activateSpan(span)) {
       return preparedStatement.execute();
     } catch (Exception e) {
-      JdbcTracingUtils.onError(e, scope.span());
+      JdbcTracingUtils.onError(e, span);
       throw e;
     } finally {
-      scope.close();
+      span.finish();
     }
   }
 

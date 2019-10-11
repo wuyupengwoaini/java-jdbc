@@ -13,13 +13,11 @@
  */
 package io.opentracing.contrib.jdbc;
 
-import io.opentracing.Scope;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
-import io.opentracing.noop.NoopScopeManager.NoopScope;
+import io.opentracing.noop.NoopSpan;
 import io.opentracing.tag.StringTag;
 import io.opentracing.tag.Tags;
-import io.opentracing.util.GlobalTracer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -30,56 +28,58 @@ class JdbcTracingUtils {
   static final String COMPONENT_NAME = "java-jdbc";
 
   /**
-   * Opentracing standard tag
-   * https://github.com/opentracing/specification/blob/master/semantic_conventions.md
+   * Opentracing standard tag https://github.com/opentracing/specification/blob/master/semantic_conventions.md
    */
   static final StringTag PEER_ADDRESS = new StringTag("peer.address");
 
-  static Scope buildScope(String operationName,
+  static Span buildSpan(String operationName,
       String sql,
       ConnectionInfo connectionInfo,
       boolean withActiveSpanOnly,
       Set<String> ignoredStatements,
       Tracer tracer) {
-    Tracer currentTracer = getNullsafeTracer(tracer);
-    if (withActiveSpanOnly && currentTracer.activeSpan() == null) {
-      return NoopScope.INSTANCE;
+    if (withActiveSpanOnly && tracer.activeSpan() == null) {
+      return NoopSpan.INSTANCE;
     } else if (ignoredStatements != null && ignoredStatements.contains(sql)) {
-      return NoopScope.INSTANCE;
+      return NoopSpan.INSTANCE;
     }
 
-    Tracer.SpanBuilder spanBuilder = currentTracer.buildSpan(operationName)
+    Tracer.SpanBuilder spanBuilder = tracer.buildSpan(operationName)
         .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT);
 
-    Scope scope = spanBuilder.startActive(true);
-    decorate(scope.span(), sql, connectionInfo);
+    Span span = spanBuilder.start();
+    decorate(span, sql, connectionInfo);
 
-    return scope;
+    return span;
   }
 
-  private static Tracer getNullsafeTracer(final Tracer tracer) {
-    if (tracer == null) {
-      return GlobalTracer.get();
-    }
-    return tracer;
+  private static boolean isNotEmpty(CharSequence s) {
+    return s != null && !"".contentEquals(s);
   }
 
-  private static void decorate(Span span,
-      String sql,
-      ConnectionInfo connectionInfo) {
+  /**
+   * Add tags to span. Skip empty tags to avoid reported NPE in tracers.
+   */
+  private static void decorate(Span span, String sql, ConnectionInfo connectionInfo) {
     Tags.COMPONENT.set(span, COMPONENT_NAME);
-    Tags.DB_STATEMENT.set(span, sql);
-    if (connectionInfo.getDbType() != null) {
+
+    if (isNotEmpty(sql)) {
+      Tags.DB_STATEMENT.set(span, sql);
+    }
+    if (isNotEmpty(connectionInfo.getDbType())) {
       Tags.DB_TYPE.set(span, connectionInfo.getDbType());
     }
-    if (connectionInfo.getDbPeer() != null) {
+    if (isNotEmpty(connectionInfo.getDbPeer())) {
       PEER_ADDRESS.set(span, connectionInfo.getDbPeer());
     }
-    if (connectionInfo.getDbInstance() != null) {
+    if (isNotEmpty(connectionInfo.getDbInstance())) {
       Tags.DB_INSTANCE.set(span, connectionInfo.getDbInstance());
     }
-    if (connectionInfo.getDbUser() != null) {
+    if (isNotEmpty(connectionInfo.getDbUser())) {
       Tags.DB_USER.set(span, connectionInfo.getDbUser());
+    }
+    if (isNotEmpty(connectionInfo.getPeerService())) {
+      Tags.PEER_SERVICE.set(span, connectionInfo.getPeerService());
     }
   }
 

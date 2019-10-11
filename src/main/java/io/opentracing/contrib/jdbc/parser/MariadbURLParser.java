@@ -13,8 +13,9 @@
  */
 package io.opentracing.contrib.jdbc.parser;
 
-import io.opentracing.contrib.jdbc.ConnectionInfo;
+public class MariadbURLParser extends MysqlURLParser {
 
-public interface ConnectionURLParser {
-  ConnectionInfo parse(final String url);
+  protected String dbType() {
+    return "mariadb";
+  }
 }

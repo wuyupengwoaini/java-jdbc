@@ -14,8 +14,10 @@
 package io.opentracing.contrib.jdbc;
 
 
+import static io.opentracing.contrib.jdbc.TestUtil.checkNoEmptyTags;
 import static io.opentracing.contrib.jdbc.TestUtil.checkSameTrace;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
@@ -26,7 +28,7 @@ import io.opentracing.tag.Tags;
 import io.opentracing.util.GlobalTracerTestUtil;
 import io.opentracing.util.ThreadLocalScopeManager;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -75,7 +77,7 @@ public class HibernateTest {
     assertNotNull(employee.id);
 
     List<MockSpan> finishedSpans = mockTracer.finishedSpans();
-    assertEquals(8, finishedSpans.size());
+    assertEquals(9, finishedSpans.size());
 
     checkSpans(finishedSpans, "jpa");
     assertNull(mockTracer.activeSpan());
@@ -104,8 +106,8 @@ public class HibernateTest {
 
   @Test
   public void jpa_with_parent() {
-
-    try (Scope ignored = mockTracer.buildSpan("parent").startActive(true)) {
+    final MockSpan parent = mockTracer.buildSpan("parent").start();
+    try (Scope ignored = mockTracer.activateSpan(parent)) {
       EntityManagerFactory entityManagerFactory = Persistence.createEntityManagerFactory("jpa");
 
       EntityManager entityManager = entityManagerFactory.createEntityManager();
@@ -117,17 +119,18 @@ public class HibernateTest {
       entityManager.close();
       entityManagerFactory.close();
     }
+    parent.finish();
 
     List<MockSpan> spans = mockTracer.finishedSpans();
-    assertEquals(11, spans.size());
+    assertEquals(12, spans.size());
     checkSameTrace(spans);
     assertNull(mockTracer.activeSpan());
   }
 
   @Test
   public void jpa_with_parent_and_active_span_only() {
-
-    try (Scope ignored = mockTracer.buildSpan("parent").startActive(true)) {
+    final MockSpan parent = mockTracer.buildSpan("parent").start();
+    try (Scope ignored = mockTracer.activateSpan(parent)) {
       EntityManagerFactory entityManagerFactory = Persistence
           .createEntityManagerFactory("jpa_active_span_only");
 
@@ -140,9 +143,10 @@ public class HibernateTest {
       entityManager.close();
       entityManagerFactory.close();
     }
+    parent.finish();
 
     List<MockSpan> spans = mockTracer.finishedSpans();
-    assertEquals(11, spans.size());
+    assertEquals(12, spans.size());
     checkSameTrace(spans);
     assertNull(mockTracer.activeSpan());
   }
@@ -162,7 +166,7 @@ public class HibernateTest {
     assertNotNull(employee.id);
 
     List<MockSpan> finishedSpans = mockTracer.finishedSpans();
-    assertEquals(8, finishedSpans.size());
+    assertEquals(9, finishedSpans.size());
 
     checkSpans(finishedSpans, "hibernate");
     assertNull(mockTracer.activeSpan());
@@ -190,7 +194,8 @@ public class HibernateTest {
 
   @Test
   public void hibernate_with_parent() {
-    try (Scope ignored = mockTracer.buildSpan("parent").startActive(true)) {
+    final MockSpan parent = mockTracer.buildSpan("parent").start();
+    try (Scope ignored = mockTracer.activateSpan(parent)) {
       SessionFactory sessionFactory = createSessionFactory(false);
       Session session = sessionFactory.openSession();
 
@@ -201,16 +206,18 @@ public class HibernateTest {
       session.close();
       sessionFactory.close();
     }
+    parent.finish();
 
     List<MockSpan> spans = mockTracer.finishedSpans();
-    assertEquals(11, spans.size());
+    assertEquals(12, spans.size());
     checkSameTrace(spans);
     assertNull(mockTracer.activeSpan());
   }
 
   @Test
   public void hibernate_with_parent_and_active_span_only() {
-    try (Scope ignored = mockTracer.buildSpan("parent").startActive(true)) {
+    final MockSpan parent = mockTracer.buildSpan("parent").start();
+    try (Scope ignored = mockTracer.activateSpan(parent)) {
       SessionFactory sessionFactory = createSessionFactory(true);
       Session session = sessionFactory.openSession();
 
@@ -221,9 +228,10 @@ public class HibernateTest {
       session.close();
       sessionFactory.close();
     }
+    parent.finish();
 
     List<MockSpan> spans = mockTracer.finishedSpans();
-    assertEquals(11, spans.size());
+    assertEquals(12, spans.size());
     checkSameTrace(spans);
     assertNull(mockTracer.activeSpan());
   }
@@ -231,7 +239,7 @@ public class HibernateTest {
   @Test
   public void hibernate_with_ignored_statement() {
     SessionFactory sessionFactory = createSessionFactory(false,
-        Arrays.asList("insert into Employee (id) values (?)"));
+        Collections.singletonList("insert into Employee (id) values (?)"));
     Session session = sessionFactory.openSession();
 
     Employee employee = new Employee();
@@ -244,13 +252,14 @@ public class HibernateTest {
     assertNotNull(employee.id);
 
     List<MockSpan> finishedSpans = mockTracer.finishedSpans();
-    assertEquals(7, finishedSpans.size());
+    assertEquals(8, finishedSpans.size());
 
-    checkSpans(finishedSpans,"hibernate");
+    checkSpans(finishedSpans, "hibernate");
     assertNull(mockTracer.activeSpan());
   }
 
-  private void checkSpans(List<MockSpan> mockSpans,String dbInstance) {
+  private void checkSpans(List<MockSpan> mockSpans, String dbInstance) {
+    checkNoEmptyTags(mockSpans);
     for (MockSpan mockSpan : mockSpans) {
       assertEquals(Tags.SPAN_KIND_CLIENT, mockSpan.tags().get(Tags.SPAN_KIND.getKey()));
       assertEquals(JdbcTracingUtils.COMPONENT_NAME, mockSpan.tags().get(Tags.COMPONENT.getKey()));
@@ -259,8 +268,11 @@ public class HibernateTest {
       assertEquals(dbInstance, mockSpan.tags().get(Tags.DB_INSTANCE.getKey()));
       assertEquals("localhost:-1", mockSpan.tags().get("peer.address"));
 
-
-      assertNotNull(mockSpan.tags().get(Tags.DB_STATEMENT.getKey()));
+      final String sql = (String) mockSpan.tags().get(Tags.DB_STATEMENT.getKey());
+      if (sql != null) {
+        // empty sql should not be added to avoid NPE in tracers
+        assertFalse(sql.trim().isEmpty());
+      }
       assertEquals(0, mockSpan.generatedErrors().size());
     }
   }

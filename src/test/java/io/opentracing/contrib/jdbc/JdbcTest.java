@@ -13,6 +13,7 @@
  */
 package io.opentracing.contrib.jdbc;
 
+import static io.opentracing.contrib.jdbc.TestUtil.checkNoEmptyTags;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -50,7 +51,8 @@ public class JdbcTest {
     connection.close();
 
     List<MockSpan> spans = mockTracer.finishedSpans();
-    assertEquals(1, spans.size());
+    assertEquals(2, spans.size());
+    checkNoEmptyTags(spans);
   }
 
   @Test
@@ -64,8 +66,9 @@ public class JdbcTest {
     connection.close();
 
     List<MockSpan> spans = mockTracer.finishedSpans();
-    assertEquals(1, spans.size());
-    MockSpan span = spans.get(0);
+    assertEquals(2, spans.size());
+    MockSpan span = spans.get(1);
     assertTrue(span.tags().containsKey(Tags.ERROR.getKey()));
+    checkNoEmptyTags(spans);
   }
 }
